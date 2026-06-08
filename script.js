@@ -320,31 +320,52 @@ applyBtn.addEventListener('click', () => {
 });
 
 // БРОНЕБОЙНОЕ СКАЧИВАНИЕ ДЛЯ ВСЕХ МОБИЛЬНЫХ И ДЕСКТОПНЫХ БРАУЗЕРОВ
+// УНИВЕРСАЛЬНЫЙ МЕТОД ДЛЯ ОБХОДА БЛОКИРОВОК CHROME НА IOS И ДРУГИХ БРАУЗЕРОВ
 confirmDownloadBtn.addEventListener('click', (e) => {
-    e.preventDefault(); // Останавливаем стандартный переход по ссылке
-    
     if (!generatedBlob) return;
 
     const filename = `font_${Date.now()}.png`;
-    const blobUrl = URL.createObjectURL(generatedBlob);
-    
-    // Создаем виртуальную ссылку в самом документе
-    const systemLink = document.createElement('a');
-    systemLink.style.display = 'none';
-    systemLink.href = blobUrl;
-    systemLink.setAttribute('download', filename);
-    
-    // Обязательно вставляем в DOM (критично для Safari на iOS и Firefox)
-    document.body.appendChild(systemLink);
-    
-    // Имитируем физическое нажатие
-    systemLink.click();
-    
-    // Мгновенно удаляем ссылку из разметки и освобождаем память
-    document.body.removeChild(systemLink);
-    setTimeout(() => {
-        URL.revokeObjectURL(blobUrl);
-    }, 150);
+
+    // Проверяем, не сидим ли мы в Chrome на iPhone/iPad (он ломает скачивание Blob)
+    const isIOSChrome = navigator.userAgent.match('CriOS');
+
+    if (isIOSChrome) {
+        // РЕШЕНИЕ ДЛЯ МОБИЛЬНОГО CHROME: 
+        // Переводим Blob обратно в DataURL и открываем в новой вкладке. 
+        // Пользователь увидит чистую картинку и сможет зажать её пальцем -> "Сохранить в Фото"
+        e.preventDefault();
+        const reader = new FileReader();
+        reader.onloadend = function() {
+            const dataUrl = reader.result;
+            // Открываем окно, откуда на айфоне 100% можно сохранить картинку в галерею
+            const newWindow = window.open();
+            if (newWindow) {
+                newWindow.document.write(`<img src="${dataUrl}" style="max-width:100%; height:auto;" />`);
+                newWindow.document.title = filename;
+            } else {
+                // Если всплывающее окно заблокировано, пускаем по стандартному пути
+                window.location.href = dataUrl;
+            }
+        };
+        reader.readAsDataURL(generatedBlob);
+    } else {
+        // СТАНДАРТНЫЙ БРОНЕБОЙНЫЙ МЕТОД ДЛЯ SAFARI, ANDROID CHROME И ДЕСКТОПОВ
+        e.preventDefault();
+        const blobUrl = URL.createObjectURL(generatedBlob);
+        
+        const systemLink = document.createElement('a');
+        systemLink.style.display = 'none';
+        systemLink.href = blobUrl;
+        systemLink.setAttribute('download', filename);
+        
+        document.body.appendChild(systemLink);
+        systemLink.click();
+        
+        document.body.removeChild(systemLink);
+        setTimeout(() => {
+            URL.revokeObjectURL(blobUrl);
+        }, 150);
+    }
 });
 
 // Инициализация при старте
