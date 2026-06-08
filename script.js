@@ -73,7 +73,7 @@ let currentIndex = 0;
 let currentHue = 0;
 let currentBrightness = 100;
 let currentAlignment = 'center';
-let generatedBlob = null; // Глобальная переменная для хранения бинарных данных холста
+let generatedDataUrl = null; 
 
 const fontPreview = document.getElementById('fontPreview');
 const fontName = document.getElementById('fontName');
@@ -92,13 +92,11 @@ const brightnessSlider = document.getElementById('brightnessSlider');
 const brightLabel = document.getElementById('brightLabel');
 const indicator = document.getElementById('indicator');
 
-// Элементы поиска
 const searchBtn = document.getElementById('searchBtn');
 const searchPanel = document.getElementById('searchPanel');
 const fontSearchInput = document.getElementById('fontSearchInput');
 const searchResults = document.getElementById('searchResults');
 
-// Модальное окно скачивания
 const downloadModal = document.getElementById('downloadModal');
 const confirmDownloadBtn = document.getElementById('confirmDownloadBtn');
 const closeModalBtn = document.getElementById('closeModalBtn');
@@ -122,7 +120,6 @@ function updateTextColor() {
     brightnessSlider.style.background = `linear-gradient(to right, #000000, hsl(${currentHue}, 100%, 50%), #ffffff)`;
 }
 
-// Переключение панели поиска
 searchBtn.addEventListener('click', () => {
     searchBtn.classList.toggle('active');
     searchPanel.classList.toggle('open');
@@ -133,7 +130,6 @@ searchBtn.addEventListener('click', () => {
     }
 });
 
-// Реализация живого поиска
 fontSearchInput.addEventListener('input', (e) => {
     renderSearchResults(e.target.value);
 });
@@ -210,7 +206,7 @@ nextBtn.addEventListener('click', () => {
     updateSlider(currentIndex);
 });
 
-// ТОЧНАЯ ГЕНЕРАЦИЯ С АВТОМАТИЧЕСКИМ ПЕРЕНОСОМ ДЛИННЫХ СЛОВ И ДИНАМИЧЕСКИМ ХОЛСТОМ
+// ТОЧНАЯ ГЕНЕРАЦИЯ И АБСОЛЮТНО РАБОЧЕЕ ОКНО СКАЧИВАНИЯ
 applyBtn.addEventListener('click', () => {
     const textToRender = fontPreview.textContent;
     const activeFont = fontsData[currentIndex];
@@ -283,7 +279,6 @@ applyBtn.addEventListener('click', () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.font = `${fontSize}px "${activeFont.fontFamily}"`;
         ctx.fillStyle = `hsl(${currentHue}, 100%, ${currentBrightness}%)`;
-        
         ctx.textBaseline = 'top'; 
 
         let xPos = canvasPadding;
@@ -303,69 +298,57 @@ applyBtn.addEventListener('click', () => {
             yPos += lineHeight;
         });
 
-        canvas.toBlob((blob) => {
-            if (!blob) return;
-            
-            // Сохраняем бинарные данные в глобальную переменную для скачивания
-            generatedBlob = blob;
+        // Получаем надежный Data URL (он работает везде)
+        generatedDataUrl = canvas.toDataURL("image/png");
 
-            // Показываем модальное окно
-            downloadModal.style.display = 'flex';
+        // ДИНАМИЧЕСКИ ВСТАВЛЯЕМ КАРТИНКУ ПРЯМО В МОДАЛЬНОЕ ОКНО
+        const modalBox = downloadModal.querySelector('div');
+        
+        let previewImg = document.getElementById('finalMobileImage');
+        if (!previewImg) {
+            previewImg = document.createElement('img');
+            previewImg.id = 'finalMobileImage';
+            previewImg.style.width = '100%';
+            previewImg.style.maxHeight = '180px';
+            previewImg.style.objectFit = 'contain';
+            previewImg.style.borderRadius = '10px';
+            previewImg.style.marginBottom = '15px';
+            previewImg.style.border = '1px dashed rgba(255,255,255,0.3)';
+            previewImg.style.backgroundColor = 'rgba(0,0,0,0.2)';
+            modalBox.insertBefore(previewImg, confirmDownloadBtn);
+        }
+        previewImg.src = generatedDataUrl;
 
-            closeModalBtn.onclick = () => {
-                downloadModal.style.display = 'none';
-            };
-        }, 'image/png');
+        // Меняем текст, чтобы пользователь с iPhone понял, что делать
+        const textDesc = modalBox.querySelector('p');
+        if (textDesc) {
+            textDesc.innerHTML = 'Нажмите «Скачать PNG».<br><strong style="color: #ffcc00; display: block; margin-top: 8px; font-size: 13px;">Если кнопка не работает (iPhone/VK) — просто зажмите картинку выше пальцем и выберите «Сохранить в Фото».</strong>';
+        }
+
+        downloadModal.style.display = 'flex';
+
+        closeModalBtn.onclick = () => {
+            downloadModal.style.display = 'none';
+        };
     });
 });
 
-// БРОНЕБОЙНОЕ СКАЧИВАНИЕ ДЛЯ ВСЕХ МОБИЛЬНЫХ И ДЕСКТОПНЫХ БРАУЗЕРОВ
-// УНИВЕРСАЛЬНЫЙ МЕТОД ДЛЯ ОБХОДА БЛОКИРОВОК CHROME НА IOS И ДРУГИХ БРАУЗЕРОВ
+// КНОПКА СКАЧИВАНИЯ (Пытается скачать, если браузер позволяет)
 confirmDownloadBtn.addEventListener('click', (e) => {
-    if (!generatedBlob) return;
+    e.preventDefault();
+    if (!generatedDataUrl) return;
 
     const filename = `font_${Date.now()}.png`;
 
-    // Проверяем, не сидим ли мы в Chrome на iPhone/iPad (он ломает скачивание Blob)
-    const isIOSChrome = navigator.userAgent.match('CriOS');
-
-    if (isIOSChrome) {
-        // РЕШЕНИЕ ДЛЯ МОБИЛЬНОГО CHROME: 
-        // Переводим Blob обратно в DataURL и открываем в новой вкладке. 
-        // Пользователь увидит чистую картинку и сможет зажать её пальцем -> "Сохранить в Фото"
-        e.preventDefault();
-        const reader = new FileReader();
-        reader.onloadend = function() {
-            const dataUrl = reader.result;
-            // Открываем окно, откуда на айфоне 100% можно сохранить картинку в галерею
-            const newWindow = window.open();
-            if (newWindow) {
-                newWindow.document.write(`<img src="${dataUrl}" style="max-width:100%; height:auto;" />`);
-                newWindow.document.title = filename;
-            } else {
-                // Если всплывающее окно заблокировано, пускаем по стандартному пути
-                window.location.href = dataUrl;
-            }
-        };
-        reader.readAsDataURL(generatedBlob);
-    } else {
-        // СТАНДАРТНЫЙ БРОНЕБОЙНЫЙ МЕТОД ДЛЯ SAFARI, ANDROID CHROME И ДЕСКТОПОВ
-        e.preventDefault();
-        const blobUrl = URL.createObjectURL(generatedBlob);
-        
-        const systemLink = document.createElement('a');
-        systemLink.style.display = 'none';
-        systemLink.href = blobUrl;
-        systemLink.setAttribute('download', filename);
-        
-        document.body.appendChild(systemLink);
-        systemLink.click();
-        
-        document.body.removeChild(systemLink);
-        setTimeout(() => {
-            URL.revokeObjectURL(blobUrl);
-        }, 150);
-    }
+    // Создаем ссылку для стандартного скачивания
+    const link = document.createElement('a');
+    link.style.display = 'none';
+    link.href = generatedDataUrl;
+    link.setAttribute('download', filename);
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 });
 
 // Инициализация при старте
